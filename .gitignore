@@ -1,0 +1,12 @@
+# Publish only reviewed source. Runtime files and credentials default to ignored.
+*
+!.gitignore
+!README.md
+!sources.py
+!report.py
+!tests/
+!tests/test_report.py
+!.github/
+!.github/workflows/
+!.github/workflows/daily.yml
+!deliver.py

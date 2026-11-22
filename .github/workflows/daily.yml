@@ -1,0 +1,66 @@
+name: 한국 주식 일일 보고서
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      date:
+        description: 기준일 YYYYMMDD (비우면 한국 시간 어제)
+        type: string
+        required: false
+  schedule:
+    - cron: '17 1 * * *'
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    if: github.event_name != 'schedule' || vars.REPORT_DELIVERY == 'telegram'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - run: python3 -m unittest discover -s tests -v
+  collect:
+    needs: verify
+    if: vars.REPORT_DELIVERY == 'telegram' && github.event_name != 'push' && github.ref == format('refs/heads/{0}', github.event.repository.default_branch)
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: report-${{ inputs.date || 'yesterday' }}
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+      - name: 기준일 수집
+        id: collect
+        env:
+          KRX_AUTH_KEY: ${{ secrets.KRX_AUTH_KEY }}
+          OPENDART_API_KEY: ${{ secrets.OPENDART_API_KEY }}
+          PRIVATE_CONFIG: ${{ secrets.REPORT_CONFIG_JSON }}
+          TARGET_DAY: ${{ inputs.date }}
+        shell: bash
+        run: |
+          umask 077
+          args=()
+          if [[ -n "$TARGET_DAY" ]]; then args+=(--date "$TARGET_DAY"); fi
+          if [[ -n "$PRIVATE_CONFIG" ]]; then
+            printf '%s' "$PRIVATE_CONFIG" > "$RUNNER_TEMP/config.json"
+            args+=(--config "$RUNNER_TEMP/config.json")
+          fi
+          python3 report.py --output "$RUNNER_TEMP/market-report" "${args[@]}" > "$RUNNER_TEMP/collect.log" 2>&1
+      - name: 개인 Telegram 대화로 보고서 전송
+        if: '!cancelled() && steps.collect.outcome != ''skipped'''
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+        shell: bash
+        run: |
+          shopt -s nullglob
+          runs=("$RUNNER_TEMP"/market-report/*/run-*)
+          [[ ${#runs[@]} == 1 ]]
+          python3 deliver.py "${runs[0]}"
