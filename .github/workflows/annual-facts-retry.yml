@@ -1,0 +1,98 @@
+name: Remaining financial accounts with verified issuer IDs
+on:
+  push:
+    branches: ['codex/backtest-20261123-163430']
+    paths: ['.github/workflows/annual-facts-retry.yml', 'annual-facts-retry-20261123/**']
+permissions:
+  contents: read
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    strategy:
+      fail-fast: false
+      max-parallel: 3
+      matrix:
+        part: ['0', '1', '3']
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Collect period group 0
+        env:
+          PART: ${{ matrix.part }}
+          STAGE: '0'
+          OUT_DIR: ${{ runner.temp }}/research
+          OPENDART_API_KEY: ${{ secrets.OPENDART_API_KEY }}
+        run: |
+          umask 077
+          python3 annual-facts-retry-20261123/collect.py
+      - name: Encrypt stage 0
+        if: ${{ !cancelled() }}
+        env:
+          PART: ${{ matrix.part }}
+        run: |
+          set -euo pipefail
+          umask 077
+          tar -C "$RUNNER_TEMP/research" -czf "$RUNNER_TEMP/facts-0.tgz" "facts_retry_${PART}_0"
+          openssl cms -encrypt -aes256 -binary -in "$RUNNER_TEMP/facts-0.tgz" -outform DER -out "$RUNNER_TEMP/facts-0.cms" annual-research-20261123/receiver.crt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ !cancelled() }}
+        with:
+          name: encrypted-facts-retry-${{ matrix.part }}-0
+          path: ${{ runner.temp }}/facts-0.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+      - name: Collect period group 1
+        env:
+          PART: ${{ matrix.part }}
+          STAGE: '1'
+          OUT_DIR: ${{ runner.temp }}/research
+          OPENDART_API_KEY: ${{ secrets.OPENDART_API_KEY }}
+        run: |
+          umask 077
+          python3 annual-facts-retry-20261123/collect.py
+      - name: Encrypt stage 1
+        if: ${{ !cancelled() }}
+        env:
+          PART: ${{ matrix.part }}
+        run: |
+          set -euo pipefail
+          umask 077
+          tar -C "$RUNNER_TEMP/research" -czf "$RUNNER_TEMP/facts-1.tgz" "facts_retry_${PART}_1"
+          openssl cms -encrypt -aes256 -binary -in "$RUNNER_TEMP/facts-1.tgz" -outform DER -out "$RUNNER_TEMP/facts-1.cms" annual-research-20261123/receiver.crt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ !cancelled() }}
+        with:
+          name: encrypted-facts-retry-${{ matrix.part }}-1
+          path: ${{ runner.temp }}/facts-1.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
+      - name: Collect period group 2
+        env:
+          PART: ${{ matrix.part }}
+          STAGE: '2'
+          OUT_DIR: ${{ runner.temp }}/research
+          OPENDART_API_KEY: ${{ secrets.OPENDART_API_KEY }}
+        run: |
+          umask 077
+          python3 annual-facts-retry-20261123/collect.py
+      - name: Encrypt stage 2
+        if: ${{ !cancelled() }}
+        env:
+          PART: ${{ matrix.part }}
+        run: |
+          set -euo pipefail
+          umask 077
+          tar -C "$RUNNER_TEMP/research" -czf "$RUNNER_TEMP/facts-2.tgz" "facts_retry_${PART}_2"
+          openssl cms -encrypt -aes256 -binary -in "$RUNNER_TEMP/facts-2.tgz" -outform DER -out "$RUNNER_TEMP/facts-2.cms" annual-research-20261123/receiver.crt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ !cancelled() }}
+        with:
+          name: encrypted-facts-retry-${{ matrix.part }}-2
+          path: ${{ runner.temp }}/facts-2.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
