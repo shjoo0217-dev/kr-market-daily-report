@@ -1,0 +1,38 @@
+name: Matched portfolio event exclusions
+on:
+  push:
+    branches: ['codex/backtest-20261123-163430']
+    paths: ['.github/workflows/annual-control.yml', 'annual-control-20261123/**']
+permissions:
+  contents: read
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Collect same date and market disclosures
+        env:
+          OPENDART_API_KEY: ${{ secrets.OPENDART_API_KEY }}
+          OUT_DIR: ${{ runner.temp }}/research
+        run: |
+          umask 077
+          python3 annual-control-20261123/collect_control.py
+      - name: Encrypt available research data
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          tar -C "$RUNNER_TEMP/research" -czf "$RUNNER_TEMP/annual.tgz" .
+          openssl cms -encrypt -aes256 -binary -in "$RUNNER_TEMP/annual.tgz" -outform DER -out "$RUNNER_TEMP/annual.cms" annual-research-20261123/receiver.crt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ !cancelled() }}
+        with:
+          name: encrypted-annual-control
+          path: ${{ runner.temp }}/annual.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
