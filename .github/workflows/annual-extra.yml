@@ -1,0 +1,53 @@
+name: Annual public filing coverage
+on:
+  push:
+    branches: ['codex/backtest-20261123-163430']
+    paths: ['.github/workflows/annual-extra.yml', 'annual-extra-20261123/**']
+permissions:
+  contents: read
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 35
+    strategy:
+      fail-fast: false
+      matrix:
+        source: [facts, prelim]
+    steps:
+      - uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803
+        with:
+          persist-credentials: false
+      - name: Collect comparative statements
+        if: matrix.source == 'facts'
+        env:
+          OPENDART_API_KEY: ${{ secrets.OPENDART_API_KEY }}
+          OUT_DIR: ${{ runner.temp }}/research
+        run: |
+          umask 077
+          mkdir -p "$OUT_DIR"
+          python3 annual-extra-20261123/collect_facts.py
+      - name: Collect original earnings disclosures
+        if: matrix.source == 'prelim'
+        env:
+          OPENDART_API_KEY: ${{ secrets.OPENDART_API_KEY }}
+          OUT_DIR: ${{ runner.temp }}/research
+        run: |
+          umask 077
+          mkdir -p "$OUT_DIR"
+          python3 annual-extra-20261123/collect_prelim.py
+      - name: Encrypt available research data
+        if: ${{ !cancelled() }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          umask 077
+          tar -C "$RUNNER_TEMP/research" -czf "$RUNNER_TEMP/annual.tgz" .
+          openssl cms -encrypt -aes256 -binary -in "$RUNNER_TEMP/annual.tgz" -outform DER -out "$RUNNER_TEMP/annual.cms" annual-research-20261123/receiver.crt
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02
+        if: ${{ !cancelled() }}
+        with:
+          name: encrypted-annual-${{ matrix.source }}
+          path: ${{ runner.temp }}/annual.cms
+          if-no-files-found: error
+          retention-days: 1
+          compression-level: 0
